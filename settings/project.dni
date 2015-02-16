@@ -41,7 +41,7 @@ MultiCoreRunAll=1
 LMIFTDIserialNo=0E20AE4F
 LMIFTDIfoundProbes=
 [DebugChecksum]
-Checksum=256676263
+Checksum=-1952761930
 [Exceptions]
 StopOnUncaught=_ 0
 StopOnThrow=_ 0
