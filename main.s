@@ -9,6 +9,13 @@
 ;
 ; Uses Advanced High Performance Bus rather than legacy Advanced Peripheral
 ; Bus.
+;
+; Note how the register values are set using the ORR instruction. This method
+; preserves the existing bits in the register. There is good reason for this
+; approach. If an interrupt occurs during the read-modify-write sequence, the
+; register value may change during the ISR. In that case, when the context is 
+; restored, we would write an incorrect value back to the register. Using the
+; ORR instruction is a single atomic write operation and is interrupt safe.
 
         NAME    main
       
@@ -41,109 +48,135 @@ NVIC_SYS_PRI3_R                 EQU     0xE000ED20
 
 ; Program constants
 ; systick_reload represents the time interval of our SysTick interrupt.
-systick_reload                  EQU     0x001FFFFF      ; Max value 24 bits
+systick_reload                  EQU     0x002FFFFF      ; Max value 24 bits
 
         SECTION .text : CODE (2)
         THUMB
 
 ; ---------->% main >%----------
-; Initialize and loop waiting for interrupt
+; Initialize and loop waiting for interrupt.
+;
+; The infinite loop represents work in which the processor might otherwise be 
+; occupied. In this way, our SW1 button presses will still be recognized by the 
+; processor and will work even if there are other tasks being performed.
 main
-        BL      GPIOF_Init
-        BL      GPIOF_Interrupt_Init
-        B       .               ; Loop forever
+        BL      GPIOF_Init      ; Initialize GPIO Port F
+        BL      GPIOF_Interrupt_Init    ; Initialize GPIO Port F interrupts
+        B       .               ; Pretend the processor is gainfully occupied.
 
 ; ---------->% GPIOF_Init >%----------
-; Enable GPIOF SW1 and LED pins.
+; Initialize GPIO Port F.
 ; Input: None
 ; Output: None
 ; Modifies: R0, R1
 GPIOF_Init
         ; Enable GPIOF Advanced High Performance Bus
-        LDR     R0, =SYSCTL_GPIOHBCTL_R
-        MOVS    R1, #1B << 5      ; GPIOF
+        LDR     R0, =SYSCTL_GPIOHBCTL_R ; See datasheet p258
+        LDR     R1, [R0]                ; SYSCTL_GPIOHBCTL_R value to R1
+        ORR     R1, R1, #1B << 5        ; GPIOF AHB enable bit set
         STR     R1, [R0]
         
         ; Enable GPIOF clock
-        LDR     R0, =SYSCTL_RCGCGPIO_R
-        MOVS    R1, #1B << 5      ; GPIOF
+        LDR     R0, =SYSCTL_RCGCGPIO_R  ; See datasheet p340
+        LDR     R1, [R0]                ; SYSCTL_RCGCGPIO_R value to R1
+        ORR     R1, R1, #1B << 5        ; GPIOF clock enable
         STR     R1, [R0]
 
         ; GPIOF direction
-        LDR     R0, =GPIO_PORTF_AHB_DIR_R
-        MOVS    R1, #0x0E       ; Pins 2345 out
-        STR     R1, [R0]
+        LDR     R0, =GPIO_PORTF_AHB_DIR_R       ; See datasheet p663
+        LDR     R1, [R0]                ; GPIO_PORTF_AHB_DIR_R value to R1
+        ORR     R1, R1, #0x0E           ; GPIOF PF4 direction PF123 output
+        STR     R1, [R0]                ; PF4 (SW1) is input by default.
         
         ; GPIOF digital enable
-        LDR     R0, =GPIO_PORTF_AHB_DEN_R
-        MOVS    R1, #0x1E       ; Pins 234 out
+        LDR     R0, =GPIO_PORTF_AHB_DEN_R       ; See datasheet p682
+        LDR     R1, [R0]                ; GPIO_PORTF_AHB_DEN_R value to R1
+        ORR     R1, R1, #0x1E           ; Set PF1234 as digital
         STR     R1, [R0]
 
         BX      LR
 
 ; ---------->% GPIOF_Interrupt_Init >%----------
-; Initialize GPIOF interrupt and NVIC interrupt.
+; Initialize GPIOF interrupt and NVIC interrupt. Both are needed for GPIO
+; interrupts to be raised.
 ; Input: None
 ; Output: None
 ; Modifies: R0, R1
 GPIOF_Interrupt_Init
         ; GPIOF interrupt priority
-        LDR     R0, =NVIC_PRI7_R
-        MOVS    R1, #0x0                ; Highest
+        LDR     R0, =NVIC_PRI7_R        ; See datasheet p152
+        MOVS    R1, #0x0                ; Highest priority
         STR     R1, [R0]
         
         ; GPIOF interrupt priority
-        LDR     R0, =GPIO_PORTF_AHB_PUR_R
-        MOVS    R1, #1B << 4            ; SW1 pull up resistor
+        LDR     R0, =GPIO_PORTF_AHB_PUR_R       ; p677 GPIO Pull-Up Select
+        LDR     R1, [R0]
+        ORR     R1, R1, #1B << 4                ; SW1 pull up resistor
         STR     R1, [R0]        
         
         ; GPIOF NVIC interrupt enable
-        LDR     R0, =NVIC_EN0_R
-        MOVS    R1, #0x40000000         ; TODO: Define constant
+        LDR     R0, =NVIC_EN0_R                 ; p142 Interrupt 0-31 Set Enable 
+        LDR     R1, [R0]
+        ORR     R1, R1, #0x40000000
         STR     R1, [R0]
         
         PUSH    {LR}
-        BL      GPIOF_PF5_Interrupt_Enable
+        BL      GPIOF_PF4_Interrupt_Enable      ; Enable GPIOF PF4 interrupt
         POP     {LR}
 
         BX      LR
 
-; ---------->% GPIOF_PF5_Interrupt_Enable >%----------
-; Enable GPIOF interrupt on PF5
+; ---------->% GPIOF_PF4_Interrupt_Enable >%----------
+; Enable GPIOF interrupt on PF4
 ; Input: None
 ; Output: None
 ; Modifies: R0, R1
-GPIOF_PF5_Interrupt_Enable
-        LDR     R0, =GPIO_PORTF_AHB_IM_R
-        MOVS    R1, #0x10       ; TODO: This is bad. Need to preserve any bits.
-;        ORR     R1, R1, #0x10   ; Set the one bit 0x10
+GPIOF_PF4_Interrupt_Enable
+        LDR     R0, =GPIO_PORTF_AHB_IM_R        ; See datasheet p667
+        LDR     R1, [R0]                ; GPIO_PORTF_AHB_IM_R value to R1
+        ORR     R1, R1, #0x10           ; Set the one bit 0x10 to enable
         STR     R1, [R0]
         BX      LR
         
-; ---------->% GPIOF_PF5_Interrupt_Disable >%----------
-; Disable GPIOF interrupt on PF5.
+; ---------->% GPIOF_PF4_Interrupt_Disable >%----------
+; Disable GPIOF interrupt on PF4.
 ; Input: None
 ; Output: None
 ; Modifies: R0, R1
-GPIOF_PF5_Interrupt_Disable
-        LDR     R0, =GPIO_PORTF_AHB_IM_R      
-        BIC     R1, R1, #0x10   ; Clear the one bit 0x10
+GPIOF_PF4_Interrupt_Disable
+        LDR     R0, =GPIO_PORTF_AHB_IM_R        ; See datasheet p667
+        BIC     R1, R1, #0x10           ; Clear the one bit 0x10 to disable
         STR     R1, [R0]
         BX      LR
 
+; ---------->% GPIOF_PF4_Interrupt_Clear >%----------
+; Clear the interrupt because it will be raised again and again until we ack.
+; Input: None
+; Output: None
+; Modifies: R0, R1
+GPIOF_PF4_Interrupt_Clear
+        ; Clear the interrupt 
+        LDR     R0, =GPIO_PORTF_AHB_ICR_R       ; See datasheet p670
+        LDR     R1, [R0]        ; GPIO_PORTF_AHB_ICR_R register value to R1
+        ORR     R1, R1, #0x10   ; Clear bit 4 interrupt
+        STR     R1, [R0]        ; Ack
+        BX      LR
+
 ; ---------->% SysTick_Init >%----------
-; Initialize SysTick timer with interrupts.
+; Initialize SysTick timer with interrupts. SysTick timer will count down
+; systick_reload + 1 until it reaches zero. Then it will fire the interrupt.
+; Interrupt will be handled by SysTick_Handler.
 ; Input: None
 ; Output: None
 ; Modifies: R0, R1
 SysTick_Init
         ; Disable SysTick during init
-        PUSH    {LR}
+        PUSH    {LR}                    ; Save LR for later.
         BL      SysTick_Disable         ; Must disable while initializing.
         
         ; Reload value...clock ticks in SysTick counter
         LDR     R0, =NVIC_ST_RELOAD_R   ; See datasheet p140
-        LDR     R1, =systick_reload     ; Seems like long enough to wait.
+        LDR     R1, =systick_reload     ; Wait systick_reload + 1 clock cycles
         STR     R1, [R0]
         
         ; Clear Current value
@@ -183,8 +216,8 @@ SysTick_Disable
         BX      LR
         
 ; ---------->% GPIOPortF_Handler >%----------
-; Handle interrupts on GPIOF SW1 (PF5). This is convoluted in order to debounce
-; SW1. First, acknowledge the interrupt to turn it off. Second, disable PF5
+; Handle interrupts on GPIOF SW1 (PF4). This is convoluted in order to debounce
+; SW1. First, acknowledge the interrupt to turn it off. Second, disable PF4
 ; interrupts. Now we want to check back in systick_reload + 1 clock cycles to
 ; see whether or not SW1 is still pressed (logic LOW). So we'll go about our
 ; business looping in main until the SysTick interrupt happens. That interrupt
@@ -194,14 +227,10 @@ SysTick_Disable
 ; Output: None
 ; Modifies: R0, R1
 GPIOPortF_Handler
-        ; Clear the interrupt.
-        LDR     R0, =GPIO_PORTF_AHB_ICR_R
-        MOV     R1, #0x10       ; TODO: Confirm 0x10
-        STR     R1, [R0]        ; ack
-        
         PUSH    {LR}            ; Need this after BL
-        BL      GPIOF_PF5_Interrupt_Disable
-        BL      SysTick_Init
+        BL      GPIOF_PF4_Interrupt_Clear       ; Clear the interrupt.
+        BL      GPIOF_PF4_Interrupt_Disable     ; Don't interrupt on bounces
+        BL      SysTick_Init    ; Let SW1 settle and check back later
         POP     {LR}            ; Grab return PC from stack
         BX      LR
 
@@ -222,25 +251,22 @@ SysTick_Handler
         LDR     R0, =GPIO_PORTF_AHB_DATA_BITS_R
         ADD     R0, R0, #0x10   ; SW1 data bits address offset
         LDR     R1, [R0]        ; SW1 state will be 1 when not pressed.
-        ANDS    R1, R1, #0x10   ; Test bit 5. Is it set?
+        ANDS    R1, R1, #0x10   ; Test bit 4. Is it set?
         CBNZ    R1, ReArm       ; Bit set? Re-arm GPIOF interrupt.
         
         ; Read, modify, write LED color bits
         LDR     R0, =GPIO_PORTF_AHB_DATA_BITS_R
         ADD     R0, R0, #111B << 3      ; GPIOF LED Bits offset PF123
         LDR     R1, [R0]        ; Fetch current LED color
-        LSRS    R1, R1, #1      ; Shift LED color bit
+        LSRS    R1, R1, #1      ; Right shift LED color bit
         BIC     R1, R1, #1      ; Clear SW2 bit
-        CBNZ    R1, SetLED
-        MOVS    R1, #0x08       ; Hit zero, re-init.
+        CBNZ    R1, SetLED      ; Branch to SetLED if result non-zero.
+        MOVS    R1, #0x08       ; Hit zero, re-init LED color to green.
 SetLED
-        STR     R1, [R0]        ; Switch LED
+        STR     R1, [R0]        ; New LED colors
 ReArm        
-        ; Clear the interrupt before re-enable.
-        LDR     R0, =GPIO_PORTF_AHB_ICR_R
-        MOV     R1, #0x10       ; TODO: Confirm 0x10
-        STR     R1, [R0]        ; ack
-        BL      GPIOF_PF5_Interrupt_Enable      ; Re-arm for next SW1 press.
+        BL      GPIOF_PF4_Interrupt_Clear       ; Clear interrupt before re-arm
+        BL      GPIOF_PF4_Interrupt_Enable      ; Re-arm for next SW1 press.
 
         POP     {LR}            ; Grab return PC from the stack.
         BX      LR
