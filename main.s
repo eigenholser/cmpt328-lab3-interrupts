@@ -50,6 +50,13 @@ NVIC_SYS_PRI3_R                 EQU     0xE000ED20
 ; systick_reload represents the time interval of our SysTick interrupt.
 systick_reload                  EQU     0x002FFFFF      ; Max value 24 bits
 
+; Stuff so the stack frame is easier to decipher.
+junk_r0                         EQU     0x11111111      ; R0
+junk_r1                         EQU     0x22222222      ; R1
+junk_r2                         EQU     0x33333333      ; R3
+junk_r3                         EQU     0x44444444      ; R4
+junk_r12                        EQU     0x55555555      ; R12
+
         SECTION .text : CODE (2)
         THUMB
 
@@ -62,6 +69,11 @@ systick_reload                  EQU     0x002FFFFF      ; Max value 24 bits
 main
         BL      GPIOF_Init      ; Initialize GPIO Port F
         BL      GPIOF_Interrupt_Init    ; Initialize GPIO Port F interrupts
+        LDR     R0, =junk_r0
+        LDR     R1, =junk_r1
+        LDR     R2, =junk_r2
+        LDR     R3, =junk_r3
+        LDR     R12, =junk_r12
         B       .               ; Pretend the processor is gainfully occupied.
 
 ; ---------->% GPIOF_Init >%----------
@@ -108,7 +120,7 @@ GPIOF_Interrupt_Init
         MOVS    R1, #0x0                ; Highest priority
         STR     R1, [R0]
         
-        ; GPIOF interrupt priority
+        ; GPIOF PF4 pull up resistor for logic HIGH until SW1 press.
         LDR     R0, =GPIO_PORTF_AHB_PUR_R       ; p677 GPIO Pull-Up Select
         LDR     R1, [R0]
         ORR     R1, R1, #1B << 4                ; SW1 pull up resistor
