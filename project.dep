@@ -8,22 +8,12 @@
     <outputs>
       <file>$PROJ_DIR$\startup.s</file>
       <file>$PROJ_DIR$\main.s</file>
+      <file>$PROJ_DIR$\Debug\Exe\asm.out</file>
       <file>$PROJ_DIR$\Debug\Obj\startup.o</file>
       <file>$PROJ_DIR$\Debug\Obj\main.o</file>
-      <file>$PROJ_DIR$\Debug\Exe\asm.out</file>
-      <file>$TOOLKIT_DIR$\config\linker\TexasInstruments\TM4C123GH6.icf</file>
     </outputs>
     <file>
       <name>$PROJ_DIR$\startup.s</name>
-      <outputs>
-        <tool>
-          <name>AARM</name>
-          <file> 2</file>
-        </tool>
-      </outputs>
-    </file>
-    <file>
-      <name>$PROJ_DIR$\main.s</name>
       <outputs>
         <tool>
           <name>AARM</name>
@@ -32,20 +22,20 @@
       </outputs>
     </file>
     <file>
-      <name>$PROJ_DIR$\Debug\Exe\asm.out</name>
-      <inputs>
+      <name>$PROJ_DIR$\main.s</name>
+      <outputs>
         <tool>
-          <name>ILINK</name>
-          <file> 5 3 2</file>
+          <name>AARM</name>
+          <file> 4</file>
         </tool>
-      </inputs>
+      </outputs>
     </file>
     <file>
       <name>[ROOT_NODE]</name>
       <outputs>
         <tool>
           <name>ILINK</name>
-          <file> 4</file>
+          <file> 2</file>
         </tool>
       </outputs>
     </file>
