@@ -11,11 +11,7 @@
 ; Bus.
 ;
 ; Note how the register values are set using the ORR instruction. This method
-; preserves the existing bits in the register. There is good reason for this
-; approach. If an interrupt occurs during the read-modify-write sequence, the
-; register value may change during the ISR. In that case, when the context is 
-; restored, we would write an incorrect value back to the register. Using the
-; ORR instruction is a single atomic write operation and is interrupt safe.
+; preserves the existing bits in the register.
 
         NAME    main
       
@@ -48,7 +44,7 @@ NVIC_SYS_PRI3_R                 EQU     0xE000ED20
 
 ; Program constants
 ; systick_reload represents the time interval of our SysTick interrupt.
-systick_reload                  EQU     0x002FFFFF      ; Max value 24 bits
+systick_reload                  EQU     0x000FFFFF      ; Max value 24 bits
 
 ; Stuff so the stack frame is easier to decipher.
 junk_r0                         EQU     0x11111111      ; R0
@@ -69,6 +65,8 @@ junk_r12                        EQU     0x55555555      ; R12
 main
         BL      GPIOF_Init      ; Initialize GPIO Port F
         BL      GPIOF_Interrupt_Init    ; Initialize GPIO Port F interrupts
+        ; Load conspicuous values into registers so we can see them in the 
+        ; stack frame later.
         LDR     R0, =junk_r0
         LDR     R1, =junk_r1
         LDR     R2, =junk_r2
@@ -76,12 +74,26 @@ main
         LDR     R12, =junk_r12
         B       .               ; Pretend the processor is gainfully occupied.
 
+; ---------->% CheckSW1Value >%----------
+; Load the value of GPIO port F Data into R1 so we can look at the value of SW1
+; while it is not pressed. That is all this does. It is for illustration only.
+; Input: None
+; Output: None
+; Modifies: R0, R1
+CheckSW1Value
+        MOV     R1, #0
+        LDR     R0, =GPIO_PORTF_AHB_DATA_BITS_R
+        ADD     R0, R0, #0x40   ; SW1 data bit address offset
+        LDR     R1, [R0]        ; Load value into R1. See watch window.
+        BX      LR
+        
 ; ---------->% GPIOF_Init >%----------
 ; Initialize GPIO Port F.
 ; Input: None
 ; Output: None
 ; Modifies: R0, R1
 GPIOF_Init
+        PUSH    {LR}
         ; Enable GPIOF Advanced High Performance Bus
         LDR     R0, =SYSCTL_GPIOHBCTL_R ; See datasheet p258
         LDR     R1, [R0]                ; SYSCTL_GPIOHBCTL_R value to R1
@@ -100,12 +112,21 @@ GPIOF_Init
         ORR     R1, R1, #0x0E           ; GPIOF PF4 direction PF123 output
         STR     R1, [R0]                ; PF4 (SW1) is input by default.
         
+        ; GPIOF PF4 pull up resistor for logic HIGH until SW1 press.
+        BL      CheckSW1Value                   ; Before - Illustration only. 
+        LDR     R0, =GPIO_PORTF_AHB_PUR_R       ; p677 GPIO Pull-Up Select
+        LDR     R1, [R0]
+        ORR     R1, R1, #1B << 4                ; SW1 pull up resistor
+        STR     R1, [R0]
+        BL      CheckSW1Value                   ; After - Illustration only. 
+        
         ; GPIOF digital enable
         LDR     R0, =GPIO_PORTF_AHB_DEN_R       ; See datasheet p682
         LDR     R1, [R0]                ; GPIO_PORTF_AHB_DEN_R value to R1
         ORR     R1, R1, #0x1E           ; Set PF1234 as digital
         STR     R1, [R0]
 
+        POP     {LR}
         BX      LR
 
 ; ---------->% GPIOF_Interrupt_Init >%----------
@@ -117,14 +138,8 @@ GPIOF_Init
 GPIOF_Interrupt_Init
         ; GPIOF interrupt priority
         LDR     R0, =NVIC_PRI7_R        ; See datasheet p152
-        MOVS    R1, #0x0                ; Highest priority
-        STR     R1, [R0]
-        
-        ; GPIOF PF4 pull up resistor for logic HIGH until SW1 press.
-        LDR     R0, =GPIO_PORTF_AHB_PUR_R       ; p677 GPIO Pull-Up Select
-        LDR     R1, [R0]
-        ORR     R1, R1, #1B << 4                ; SW1 pull up resistor
-        STR     R1, [R0]        
+        MOV     R1, #0x0                ; Highest priority
+        STR     R1, [R0]     
         
         ; GPIOF NVIC interrupt enable
         LDR     R0, =NVIC_EN0_R                 ; p142 Interrupt 0-31 Set Enable 
@@ -193,12 +208,12 @@ SysTick_Init
         
         ; Clear Current value
         LDR     R0, =NVIC_ST_CURRENT_R  ; See datasheet p141
-        MOVS    R1, #0                  ; SysTick Current Value Register
+        MOV     R1, #0                  ; SysTick Current Value Register
         STR     R1, [R0]
         
         ; Set interrupt priority
         LDR     R0, =NVIC_SYS_PRI3_R    ; NVIC interrupt 15 priority register
-        MOVS    R1, #0x40000000         ; SysTick bits
+        MOV     R1, #0x40000000         ; SysTick bits
         STR     R1, [R0]
         
         BL      SysTick_Enable          ; SysTick on
@@ -212,7 +227,7 @@ SysTick_Init
 ; Modifies: R0, R1
 SysTick_Enable
         LDR     R0, =NVIC_ST_CTRL_R     ; See datasheet p138
-        MOVS    R1, #7                  ; SysTick Control and Status Register
+        MOV     R1, #7                  ; SysTick Control and Status Register
         STR     R1, [R0]
         BX      LR
         
@@ -223,7 +238,7 @@ SysTick_Enable
 ; Modifies: R0, R1
 SysTick_Disable
         LDR     R0, =NVIC_ST_CTRL_R     ; See datasheet p138
-        MOVS    R1, #0                  ; SysTick Control and Status Register
+        MOV     R1, #0                  ; SysTick Control and Status Register
         STR     R1, [R0]
         BX      LR
         
@@ -259,9 +274,9 @@ SysTick_Handler
         PUSH    {LR}                    ; Will need this later.
         BL      SysTick_Disable         ; Only needed one SysTick
         
-        ; Read SW1 position. SW1 depressed will be R0 bit 5 = 0.
+        ; Read SW1 position. SW1 depressed will be R0 bit 4 = 0.
         LDR     R0, =GPIO_PORTF_AHB_DATA_BITS_R
-        ADD     R0, R0, #0x10   ; SW1 data bits address offset
+        ADD     R0, R0, #0x40   ; SW1 data bits address offset
         LDR     R1, [R0]        ; SW1 state will be 1 when not pressed.
         ANDS    R1, R1, #0x10   ; Test bit 4. Is it set?
         CBNZ    R1, ReArm       ; Bit set? Re-arm GPIOF interrupt.
@@ -270,10 +285,10 @@ SysTick_Handler
         LDR     R0, =GPIO_PORTF_AHB_DATA_BITS_R
         ADD     R0, R0, #111B << 3      ; GPIOF LED Bits offset PF123
         LDR     R1, [R0]        ; Fetch current LED color
-        LSRS    R1, R1, #1      ; Right shift LED color bit
+        LSR     R1, R1, #1      ; Right shift LED color bit
         BIC     R1, R1, #1      ; Clear SW2 bit
         CBNZ    R1, SetLED      ; Branch to SetLED if result non-zero.
-        MOVS    R1, #0x08       ; Hit zero, re-init LED color to green.
+        MOV     R1, #0x08       ; Hit zero, re-init LED color to green.
 SetLED
         STR     R1, [R0]        ; New LED colors
 ReArm        
