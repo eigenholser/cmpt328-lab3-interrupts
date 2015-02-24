@@ -41,7 +41,7 @@ MultiCoreRunAll=1
 LMIFTDIserialNo=0E20AE4F
 LMIFTDIfoundProbes=
 [DebugChecksum]
-Checksum=-791799935
+Checksum=1404251900
 [Exceptions]
 StopOnUncaught=_ 0
 StopOnThrow=_ 0
@@ -71,7 +71,8 @@ mode=0
 [Breakpoints]
 Bp0=_ "STD_CODE" "0x00000042" 0 0 0 0 "" 0 ""
 Bp1=_ "STD_CODE" "0x20003024" 0 0 0 0 "" 0 ""
-Count=2
+Bp2=_ "STD_CODE" "{$PROJ_DIR$\main.s}.84.1" 1 0 0 0 "" 0 ""
+Count=3
 [Aliases]
 Count=0
 SuppressDialog=0
