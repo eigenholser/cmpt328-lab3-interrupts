@@ -112,6 +112,12 @@ GPIOF_Init
         ORR     R1, R1, #0x0E           ; GPIOF PF4 direction PF123 output
         STR     R1, [R0]                ; PF4 (SW1) is input by default.
         
+        ; GPIOF digital enable
+        LDR     R0, =GPIO_PORTF_AHB_DEN_R       ; See datasheet p682
+        LDR     R1, [R0]                ; GPIO_PORTF_AHB_DEN_R value to R1
+        ORR     R1, R1, #0x1E           ; Set PF1234 as digital
+        STR     R1, [R0]
+        
         ; GPIOF PF4 pull up resistor for logic HIGH until SW1 press.
         BL      CheckSW1Value                   ; Before - Illustration only. 
         LDR     R0, =GPIO_PORTF_AHB_PUR_R       ; p677 GPIO Pull-Up Select
@@ -119,12 +125,6 @@ GPIOF_Init
         ORR     R1, R1, #1B << 4                ; SW1 pull up resistor
         STR     R1, [R0]
         BL      CheckSW1Value                   ; After - Illustration only. 
-        
-        ; GPIOF digital enable
-        LDR     R0, =GPIO_PORTF_AHB_DEN_R       ; See datasheet p682
-        LDR     R1, [R0]                ; GPIO_PORTF_AHB_DEN_R value to R1
-        ORR     R1, R1, #0x1E           ; Set PF1234 as digital
-        STR     R1, [R0]
 
         POP     {LR}
         BX      LR
