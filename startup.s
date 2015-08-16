@@ -9,7 +9,7 @@ Stack   EQU     0x20008000              ; Stack Pointer
         
 ; Vector Table
         SECTION .intvec : CODE
-        DATA
+        DATA                            ; Memory Addr  V#  I# 
         DC32    Stack                   ; 0x00000000   0   - Stack Pointer
         DC32    __iar_program_start     ; 0x00000004   1   - Reset Handler
         DC32    NMI_Handler             ; 0x00000008   2   - NMI Handler
